@@ -26,6 +26,7 @@
 #include "Optional.h"
 #include "SpellMgr.h"
 #include <limits>
+#include <unordered_set>
 #include "WaypointMgr.h"
 
 typedef uint32 SAIBool;
@@ -2108,6 +2109,14 @@ public:
     void LoadSmartAIFromDB();
     void CheckIfSmartAIInDatabaseExists();
 
+    // Whether any SmartAI script listens for this game_event transition
+    // (SMART_EVENT_GAME_EVENT_START / SMART_EVENT_GAME_EVENT_END). GameEventMgr::RunSmartAIScripts
+    // consults this to skip its whole-world object sweep when no script is listening.
+    [[nodiscard]] bool HasGameEventListener(uint32 eventId, bool activate) const
+    {
+        return (activate ? mGameEventStartListeners : mGameEventEndListeners).count(eventId) != 0;
+    }
+
     SmartAIEventList GetScript(int32 entry, SmartScriptType type)
     {
         SmartAIEventList temp;
@@ -2124,6 +2133,11 @@ public:
 private:
     //event stores
     SmartAIEventMap mEventMap[SMART_SCRIPT_TYPE_MAX];
+
+    // game_event ids with at least one GAME_EVENT_START / GAME_EVENT_END listener (see
+    // HasGameEventListener). Rebuilt by LoadSmartAIFromDB.
+    std::unordered_set<uint32> mGameEventStartListeners;
+    std::unordered_set<uint32> mGameEventEndListeners;
 
     static bool EventHasInvoker(SMART_EVENT event);
 

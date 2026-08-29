@@ -127,9 +127,10 @@ void KillRewarder::_InitXP(Player* player)
     // Get initial value of XP for kill.
     // XP is given:
     // * on battlegrounds;
-    // * otherwise, not in PvP;
-    // * not if killer is on vehicle.
-    if (_victim && (_isBattleGround || (!_isPvP && !_killer->GetVehicle())))
+    // * in open-world PvP too (local server policy: player/playerbot kills level like BG kills);
+    // * otherwise, for normal PvE kills when the killer is not on a vehicle.
+    // Open-world PvP intentionally uses the normal kill XP rate rather than BG map-specific rates.
+    if (_victim && (_isBattleGround || _victim->IsPlayer() || (!_isPvP && !_killer->GetVehicle())))
         _xp = Acore::XP::Gain(player, _victim, _isBattleGround);
 
     if (_xp && !_isBattleGround && _victim) // pussywizard: npcs with relatively low hp give lower exp
@@ -219,24 +220,22 @@ void KillRewarder::_RewardPlayer(Player* player, bool isDungeon)
             player->KilledPlayerCredit();
     }
 
-    // Give XP only in PvE or in battlegrounds.
-    // Give reputation and kill credit only in PvE.
-    if (!_isPvP || _isBattleGround)
-    {
-        float xpRate = _group ? _groupRate * float(_GetPlayerLevel(player)) / _aliveSumLevel : /*Personal rate is 100%.*/ 1.0f; // Group rate depends on the sum of levels.
-        sScriptMgr->OnPlayerRewardKillRewarder(player, this, isDungeon, xpRate);                                                // Personal rate is 100%.
+    // Give XP for PvE, battleground PvP, and open-world PvP.
+    // Give reputation and creature kill credit only in PvE.
+    float xpRate = _group ? _groupRate * float(_GetPlayerLevel(player)) / _aliveSumLevel : /*Personal rate is 100%.*/ 1.0f; // Group rate depends on the sum of levels.
+    sScriptMgr->OnPlayerRewardKillRewarder(player, this, isDungeon, xpRate);                                                // Personal rate is 100%.
 
-        if (_xp)
-        {
-            // 4.2. Give XP.
-            _RewardXP(player, xpRate);
-        }
-        if (!_isBattleGround)
-        {
-            // If killer is in dungeon then all members receive full reputation at kill.
-            _RewardReputation(player);
-            _RewardKillCredit(player);
-        }
+    if (_xp)
+    {
+        // 4.2. Give XP.
+        _RewardXP(player, xpRate);
+    }
+
+    if (!_isPvP && !_isBattleGround)
+    {
+        // If killer is in dungeon then all members receive full reputation at kill.
+        _RewardReputation(player);
+        _RewardKillCredit(player);
     }
 }
 

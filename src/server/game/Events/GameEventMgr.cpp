@@ -29,6 +29,7 @@
 #include "Player.h"
 #include "PoolMgr.h"
 #include "ScriptMgr.h"
+#include "SmartScriptMgr.h"
 #include "Transport.h"
 #include "UnitAI.h"
 #include "World.h"
@@ -1901,6 +1902,12 @@ private:
 
 void GameEventMgr::RunSmartAIScripts(uint16 eventId, bool activate)
 {
+    // The sweep below visits every creature/GO in every map's object store on the world thread —
+    // with preloaded grids that is a multi-hundred-ms world-tick stall per event transition.
+    // Skip it entirely when no SmartAI script listens for this transition.
+    if (!sSmartScriptMgr->HasGameEventListener(eventId, activate))
+        return;
+
     //! Iterate over every supported source type (creature and gameobject)
     //! Not entirely sure how this will affect units in non-loaded grids.
     sMapMgr->DoForAllMaps([eventId, activate](Map* map)

@@ -2234,6 +2234,7 @@ private:
     uint32 m_state;                                     // Even derived shouldn't modify
     uint32 m_CombatTimer;
     uint32 m_lastManaUse;                               // msecs
+    uint32 m_botAuraUpdateTimer = 0;                    // accumulated diff between batched bot aura sweeps
     //TimeTrackerSmall m_movesplineTimer;
 
     Diminishing m_Diminishing;

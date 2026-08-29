@@ -4004,6 +4004,22 @@ void Unit::_UpdateSpells(uint32 time)
         }
     }
 
+    // Playerbot aura batching: the sweeps below walk every owned/visible aura each map tick even
+    // though almost none are due — with thousands of fully-buffed bots that iteration is the
+    // largest single map-thread cost. All aura timing is diff-driven, so for bot sessions the
+    // sweeps run at ~100ms cadence with the accumulated diff instead: identical timing semantics,
+    // up to ~90ms added latency on periodic ticks/expiry. Real player sessions are untouched, as
+    // is everything above this line (current-spell bookkeeping is order-sensitive per tick).
+    if (IsPlayer() && ToPlayer()->GetSession() && ToPlayer()->GetSession()->IsBot())
+    {
+        constexpr uint32 BOT_AURA_UPDATE_INTERVAL = 100;
+        m_botAuraUpdateTimer += time;
+        if (m_botAuraUpdateTimer < BOT_AURA_UPDATE_INTERVAL)
+            return;
+        time = m_botAuraUpdateTimer;
+        m_botAuraUpdateTimer = 0;
+    }
+
     // snapshot - UpdateOwner can mutate the map; pointers stay valid (removed auras
     // are deleted later in _DeleteRemovedAuras)
     m_auraUpdateSnapshot.clear();

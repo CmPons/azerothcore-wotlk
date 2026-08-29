@@ -121,6 +121,9 @@ void SmartAIMgr::LoadSmartAIFromDB()
     for (uint8 i = 0; i < SMART_SCRIPT_TYPE_MAX; i++)
         mEventMap[i].clear();  //Drop Existing SmartAI List
 
+    mGameEventStartListeners.clear();
+    mGameEventEndListeners.clear();
+
     WorldDatabasePreparedStatement* stmt = WorldDatabase.GetPreparedStatement(WORLD_SEL_SMART_SCRIPTS);
     PreparedQueryResult result = WorldDatabase.Query(stmt);
 
@@ -308,6 +311,11 @@ void SmartAIMgr::LoadSmartAIFromDB()
             SmartAIEventList eventList;
             mEventMap[source_type][temp.entryOrGuid] = eventList;
         }
+        if (temp.GetEventType() == SMART_EVENT_GAME_EVENT_START)
+            mGameEventStartListeners.insert(temp.event.gameEvent.gameEventId);
+        else if (temp.GetEventType() == SMART_EVENT_GAME_EVENT_END)
+            mGameEventEndListeners.insert(temp.event.gameEvent.gameEventId);
+
         // store the new event
         mEventMap[source_type][temp.entryOrGuid].push_back(temp);
     } while (result->NextRow());

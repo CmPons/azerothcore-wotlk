@@ -248,6 +248,11 @@ bool BattlefieldWG::Update(uint32 diff)
 
 void BattlefieldWG::OnBattleStart()
 {
+    // A relic win sets IsRelicInteractible (last-door Destroyed handler) but nothing clears
+    // it before the NEXT battle in the same uptime — only SetupBattlefield (server startup)
+    // does. Every post-win battle would otherwise start "relic open".
+    SetRelicInteractible(false);
+
     // Spawn titan relic
     GameObject* go = SpawnGameObject(GO_WINTERGRASP_TITAN_S_RELIC, 5440.37890625f, 2840.493408203125f, 430.2816162109375, 4.45059061050415039f); // VerifiedBuild 51943
     if (go)
@@ -691,37 +696,27 @@ void BattlefieldWG::OnCreatureCreate(Creature* creature)
     }
 }
 
-void BattlefieldWG::OnCreatureRemove(Creature*  /*creature*/)
+void BattlefieldWG::OnCreatureRemove(Creature* creature)
 {
-    /* possibly can be used later
-        if (IsWarTime())
-        {
-            switch (creature->GetEntry())
-            {
-                case NPC_WINTERGRASP_SIEGE_ENGINE_ALLIANCE:
-                case NPC_WINTERGRASP_SIEGE_ENGINE_HORDE:
-                case NPC_WINTERGRASP_CATAPULT:
-                case NPC_WINTERGRASP_DEMOLISHER:
-                {
-                    uint8 team;
-                    if (creature->GetFaction() == WintergraspFaction[TEAM_ALLIANCE])
-                        team = TEAM_ALLIANCE;
-                    else if (creature->GetFaction() == WintergraspFaction[TEAM_HORDE])
-                        team = TEAM_HORDE;
-                    else
-                        return;
-
-                    Vehicles[team].erase(creature->GetGUID());
-                    if (team == TEAM_HORDE)
-                        UpdateData(BATTLEFIELD_WG_DATA_VEHICLE_H, -1);
-                    else
-                        UpdateData(BATTLEFIELD_WG_DATA_VEHICLE_A, -1);
-                    UpdateVehicleCountWG();
-
-                    break;
-                }
-            }
-        }*/
+    // mod-wintergrasp-bots (Fix 2a): the core previously decremented the vehicle cap ONLY on
+    // death (OnUnitDeath). A siege vehicle that DESPAWNS without dying (TempSummon timer,
+    // summoner logout, reaped wreck) leaked its cap slot for the rest of the battle. Free the
+    // slot on removal too. FindAndRemoveVehicleFromList now erases the GUID, so death + despawn
+    // cannot double-decrement the same vehicle.
+    if (!IsWarTime())
+        return;
+    switch (creature->GetEntry())
+    {
+        case NPC_WINTERGRASP_SIEGE_ENGINE_ALLIANCE:
+        case NPC_WINTERGRASP_SIEGE_ENGINE_HORDE:
+        case NPC_WINTERGRASP_CATAPULT:
+        case NPC_WINTERGRASP_DEMOLISHER:
+            if (FindAndRemoveVehicleFromList(creature))
+                UpdateVehicleCountWG();
+            break;
+        default:
+            break;
+    }
 }
 
 void BattlefieldWG::OnGameObjectCreate(GameObject* go)
@@ -833,7 +828,7 @@ bool BattlefieldWG::FindAndRemoveVehicleFromList(Unit* vehicle)
     {
         if (Vehicles[i].find(vehicle->GetGUID()) != Vehicles[i].end())
         {
-            //Vehicles[i].erase(vehicle->GetGUID());
+            Vehicles[i].erase(vehicle->GetGUID());
             if (i == TEAM_HORDE)
                 UpdateData(BATTLEFIELD_WG_DATA_VEHICLE_H, -1);
             else
