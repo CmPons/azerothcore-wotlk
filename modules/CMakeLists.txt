@@ -201,9 +201,15 @@ foreach(SOURCE_MODULE ${MODULES_MODULE_LIST})
     list(APPEND DISABLED_SCRIPT_MODULE_PROJECTS ${INSTALL_OFFSET}/${SCRIPT_MODULE_OUTPUT_NAME})
     if(${MODULE_MODULE_VARIABLE} STREQUAL "static")
 
-      # Add the module content to the whole static module
-      CollectSourceFiles(${MODULE_SOURCE_PATH} PRIVATE_SOURCES_MODULES)
-      CollectIncludeDirectories(${MODULE_SOURCE_PATH} PUBLIC_INCLUDES)
+      # Add the module content to the whole static module. Keep module unit-test
+      # sources out of the runtime modules target; module .cmake files can append
+      # them to ACORE_MODULE_TEST_SOURCES for src/test/unit_tests instead.
+      CollectSourceFiles(${MODULE_SOURCE_PATH} PRIVATE_SOURCES_MODULES
+        ${MODULE_SOURCE_PATH}/test
+        ${MODULE_SOURCE_PATH}/tests)
+      CollectIncludeDirectories(${MODULE_SOURCE_PATH} PUBLIC_INCLUDES
+        ${MODULE_SOURCE_PATH}/test
+        ${MODULE_SOURCE_PATH}/tests)
 
       # Skip deprecated api loaders
       if (AC_SCRIPTS_INCLUDES MATCHES "${SOURCE_MODULE}")
@@ -220,8 +226,12 @@ foreach(SOURCE_MODULE ${MODULES_MODULE_LIST})
     # Generate an own dynamic module which is loadable on runtime
     # Add the module content to the whole static module
     unset(MODULE_SOURCE_PRIVATE_SOURCES)
-    CollectSourceFiles(${MODULE_SOURCE_PATH} MODULE_SOURCE_PRIVATE_SOURCES)
-    CollectIncludeDirectories(${MODULE_SOURCE_PATH} PUBLIC_INCLUDES)
+    CollectSourceFiles(${MODULE_SOURCE_PATH} MODULE_SOURCE_PRIVATE_SOURCES
+      ${MODULE_SOURCE_PATH}/test
+      ${MODULE_SOURCE_PATH}/tests)
+    CollectIncludeDirectories(${MODULE_SOURCE_PATH} PUBLIC_INCLUDES
+      ${MODULE_SOURCE_PATH}/test
+      ${MODULE_SOURCE_PATH}/tests)
 
     # Configure the scriptloader
     ConfigureScriptLoader(${SOURCE_MODULE} SCRIPT_MODULE_PRIVATE_SCRIPTLOADER ON ${SOURCE_MODULE})
