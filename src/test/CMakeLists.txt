@@ -46,9 +46,14 @@ if(MODULE_TEST_INCLUDES)
     message(STATUS "Added module test includes to unit_tests target")
 endif()
 
-# Link modules library to tests so module code is available
+# Link modules library to tests so module code is available. Some playerbot
+# module code references script-side boss classes, so link scripts as well when
+# the worldserver build created that target.
 if(TARGET modules)
     target_link_libraries(unit_tests modules)
+endif()
+if(TARGET scripts)
+    target_link_libraries(unit_tests scripts)
 endif()
 
 add_test(

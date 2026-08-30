@@ -64,7 +64,7 @@ ARG CCACHE_LOGFILE=""
 
 RUN apt-get update                                                     \
     && apt-get install -y --no-install-recommends                         \
-        build-essential ccache libtool cmake-data ninja-build cmake clang    \
+        build-essential ccache libtool cmake-data ninja-build cmake clang libclang-rt-18-dev \
         git lsb-base curl unzip default-mysql-client openssl                  \
         default-libmysqlclient-dev libboost-all-dev libssl-dev libmysql++-dev \
         libreadline-dev zlib1g-dev libbz2-dev libncurses5-dev liblzma-dev  \
@@ -102,6 +102,7 @@ RUN --mount=type=cache,target=/ccache,sharing=locked \
        -DCMAKE_CXX_COMPILER_LAUNCHER="ccache"          \
        -DCMAKE_C_COMPILER_LAUNCHER="ccache"            \
        -DBoost_USE_STATIC_LIBS="ON"                    \
+       $CMAKE_EXTRA_OPTIONS                             \
     && cmake --build . --config "$CTYPE" -j $(($(nproc) + 1)) \
     && cmake --install . --config "$CTYPE"
 
