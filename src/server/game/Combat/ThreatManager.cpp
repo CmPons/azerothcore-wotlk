@@ -247,6 +247,9 @@ void ThreatManager::Update(uint32 tdiff)
 
 Unit* ThreatManager::GetCurrentVictim()
 {
+    if (!CanHaveThreatList() || IsThreatListEmpty(true))
+        return nullptr;
+
     if (!_currentVictimRef || _currentVictimRef->ShouldBeOffline())
         UpdateVictim();
     ASSERT(!_currentVictimRef || _currentVictimRef->IsAvailable());
