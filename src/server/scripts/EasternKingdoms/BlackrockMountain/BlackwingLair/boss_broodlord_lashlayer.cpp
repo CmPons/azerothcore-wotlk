@@ -152,7 +152,9 @@ struct go_suppression_device : public GameObjectAI
             switch (eventId)
             {
                 case EVENT_SUPPRESSION_CAST:
-                    if (me->GetGoState() == GO_STATE_READY)
+                    // Despawned objects still receive AI updates while waiting to respawn.
+                    // Do not suppress players from a device they cannot see or disarm.
+                    if (me->isSpawned() && me->GetGoState() == GO_STATE_READY)
                     {
                         me->CastSpell(nullptr, SPELL_SUPPRESSION_AURA);
                         me->SendCustomAnim(0);
