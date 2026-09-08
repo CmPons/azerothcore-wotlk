@@ -930,9 +930,10 @@ void WorldSession::HandlePlayerLoginFromDB(LoginQueryHolder const& holder)
     // pussywizard: send instance welcome message as when entering the instance through a portal
     if (MapDifficulty const* mapDiff = GetMapDifficultyData(pCurrChar->GetMap()->GetId(), pCurrChar->GetMap()->GetDifficulty()))
         if (mapDiff->resetTime)
-            if (time_t timeReset = sInstanceSaveMgr->GetResetTimeFor(pCurrChar->GetMap()->GetId(), pCurrChar->GetMap()->GetDifficulty()))
+            if (time_t timeReset = sInstanceSaveMgr->GetResetTimeFor(pCurrChar->GetMap()->GetId(),
+                pCurrChar->GetMap()->GetDifficulty(), pCurrChar->GetInstanceId()))
             {
-                uint32 timeleft = uint32(timeReset - GameTime::GetGameTime().count());
+                uint32 timeleft = uint32(std::max<time_t>(0, timeReset - GameTime::GetGameTime().count()));
                 pCurrChar->SendInstanceResetWarning(pCurrChar->GetMap()->GetId(), pCurrChar->GetMap()->GetDifficulty(), timeleft, true);
             }
 
@@ -1241,9 +1242,10 @@ void WorldSession::HandlePlayerLoginToCharInWorld(Player* pCurrChar)
     // pussywizard: send instance welcome message as when entering the instance through a portal
     if (MapDifficulty const* mapDiff = GetMapDifficultyData(pCurrChar->GetMap()->GetId(), pCurrChar->GetMap()->GetDifficulty()))
         if (mapDiff->resetTime)
-            if (time_t timeReset = sInstanceSaveMgr->GetResetTimeFor(pCurrChar->GetMap()->GetId(), pCurrChar->GetMap()->GetDifficulty()))
+            if (time_t timeReset = sInstanceSaveMgr->GetResetTimeFor(pCurrChar->GetMap()->GetId(),
+                pCurrChar->GetMap()->GetDifficulty(), pCurrChar->GetInstanceId()))
             {
-                uint32 timeleft = uint32(timeReset - GameTime::GetGameTime().count());
+                uint32 timeleft = uint32(std::max<time_t>(0, timeReset - GameTime::GetGameTime().count()));
                 GetPlayer()->SendInstanceResetWarning(pCurrChar->GetMap()->GetId(), pCurrChar->GetMap()->GetDifficulty(), timeleft, true);
             }
 

@@ -23,6 +23,8 @@
 #include "Define.h"
 #include "ObjectDefines.h"
 #include "ObjectGuid.h"
+#include "ProgressionRaidReset.h"
+#include <atomic>
 #include <list>
 #include <map>
 #include <mutex>
@@ -64,6 +66,12 @@ public:
 
     /* Saved when the instance is generated for the first time */
     void InsertToDB();
+    void UpdateProgressionReset(std::string const& data, CharacterDatabaseTransaction const& transaction);
+    void PersistProgressionReset(CharacterDatabaseTransaction const& transaction);
+    [[nodiscard]] bool UsesProgressionReset() const
+    {
+        return m_progressionStage.load() != ProgressionRaidReset::Stage::Unmanaged;
+    }
     // pussywizard: deleting is done internally when there are no binds left
 
     [[nodiscard]] std::string GetInstanceData() const { return m_instanceData; }
@@ -71,7 +79,8 @@ public:
     [[nodiscard]] uint32 GetCompletedEncounterMask() const { return m_completedEncounterMask; }
     void SetCompletedEncounterMask(uint32 mask) { m_completedEncounterMask = mask; }
 
-    // pussywizard: for normal instances this corresponds to 0, for raid/heroic instances this caches the global reset time for the map
+    // Normal dungeons have a local expiry. Raids/heroics normally cache the global
+    // reset; managed progression raids instead keep their own persisted deadline.
     [[nodiscard]] time_t GetResetTime() const { return m_resetTime; }
     [[nodiscard]] time_t GetExtendedResetTime() const { return m_extendedResetTime; }
     time_t GetResetTimeForDB();
@@ -89,14 +98,18 @@ public:
 
 private:
     GuidList m_playerList;
-    time_t m_resetTime;
-    time_t m_extendedResetTime;
+    // Map workers can advance a deadline while another map's player reads their lockout.
+    std::atomic<time_t> m_resetTime;
+    std::atomic<time_t> m_extendedResetTime;
     uint32 m_instanceid;
     uint32 m_mapid;
     Difficulty m_difficulty;
     bool m_canReset;
     std::string m_instanceData;
     uint32 m_completedEncounterMask;
+    std::atomic<ProgressionRaidReset::Stage> m_progressionStage{ProgressionRaidReset::Stage::Unmanaged};
+    uint8 m_progressionWarning = 0;
+    bool m_progressionChanged = false;
 
     std::mutex _lock;
 };
@@ -133,8 +146,12 @@ public:
     void LoadInstanceSaves();
     void LoadCharacterBinds();
 
-    [[nodiscard]] time_t GetResetTimeFor(uint32 mapid, Difficulty d) const
+    [[nodiscard]] time_t GetResetTimeFor(uint32 mapid, Difficulty d, uint32 instanceId = 0) const
     {
+        if (auto save = m_instanceSaveById.find(instanceId); save != m_instanceSaveById.end())
+            if (save->second->UsesProgressionReset() && save->second->GetMapId() == mapid &&
+                save->second->GetDifficulty() == d)
+                return save->second->GetResetTime();
         ResetTimeByMapDifficultyMap::const_iterator itr  = m_resetTimeByMapDifficulty.find(MAKE_PAIR32(mapid, d));
         return itr != m_resetTimeByMapDifficulty.end() ? itr->second : 0;
     }
@@ -192,6 +209,10 @@ protected:
 private:
     void _ResetOrWarnAll(uint32 mapid, Difficulty difficulty, bool warn, time_t resetTime);
     void _ResetSave(InstanceSaveHashMap::iterator& itr);
+    bool UpdateProgressionResets(time_t now);
+    bool m_progressionEnabled = false;
+    uint32 m_progressionDays = 3;
+    uint32 m_progressionHour = 4;
     bool lock_instLists{false};
     InstanceSaveHashMap m_instanceSaveById;
     ResetTimeByMapDifficultyMap m_resetTimeByMapDifficulty;

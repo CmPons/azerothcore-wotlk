@@ -50,10 +50,16 @@ void InstanceScript::SaveToDB()
     if (save)
         save->SetInstanceData(data);
 
+    CharacterDatabaseTransaction transaction = CharacterDatabase.BeginTransaction();
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_INSTANCE_SAVE_DATA);
     stmt->SetData(0, data);
     stmt->SetData(1, instance->GetInstanceId());
-    CharacterDatabase.Execute(stmt);
+    transaction->Append(stmt);
+    // Boss states and reset transition must survive a crash together. Use actual
+    // encounter DONE states, never the potentially premature kill-credit mask.
+    if (save)
+        save->UpdateProgressionReset(data, transaction);
+    CharacterDatabase.CommitTransaction(transaction);
 }
 
 void InstanceScript::OnPlayerEnter(Player* player)

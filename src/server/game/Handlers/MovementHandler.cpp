@@ -258,9 +258,9 @@ void WorldSession::HandleMoveWorldportAck()
         Difficulty diff = GetPlayer()->GetDifficulty(mEntry->IsRaid());
         if (MapDifficulty const* mapDiff = GetMapDifficultyData(mEntry->MapID, diff))
             if (mapDiff->resetTime)
-                if (time_t timeReset = sInstanceSaveMgr->GetResetTimeFor(mEntry->MapID, diff))
+                if (time_t timeReset = sInstanceSaveMgr->GetResetTimeFor(mEntry->MapID, diff, GetPlayer()->GetInstanceId()))
                 {
-                    uint32 timeleft = uint32(timeReset - GameTime::GetGameTime().count());
+                    uint32 timeleft = uint32(std::max<time_t>(0, timeReset - GameTime::GetGameTime().count()));
                     GetPlayer()->SendInstanceResetWarning(mEntry->MapID, diff, timeleft, true);
                 }
         allowMount = mInstance->AllowMount;

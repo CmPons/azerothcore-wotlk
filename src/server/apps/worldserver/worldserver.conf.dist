@@ -3346,6 +3346,15 @@ Instance.IgnoreRaid = 0
 
 Instance.ResetTimeHour = 4
 
+# Conditional resets for Onyxia, ZG, MC, BWL, AQ20 and AQ40 (other maps unchanged).
+# First successful boss completion starts Days * 24 hours; a full clear replaces
+# that deadline with the next Instance.ResetTimeHour. Empty copies reset daily.
+# ZG requires its eight regular bosses, not the two summon events or boss adds.
+# Requires the instance_progression_reset characters migration. Startup-only;
+# disabling stops adopting saves but honors already-managed save deadlines.
+Instance.ProgressionReset.Enable = 0
+Instance.ProgressionReset.Days = 3
+
 #
 #    Instance.ResetTimeRelativeTimestamp
 #        Description: Needed for displaying valid instance reset times in ingame calendar.

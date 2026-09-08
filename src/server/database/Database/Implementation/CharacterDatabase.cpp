@@ -258,6 +258,23 @@ void CharacterDatabaseConnection::DoPrepareStatements()
     PrepareStatement(CHAR_INS_INSTANCE_SAVE, "INSERT INTO instance (id, map, resettime, difficulty, completedEncounters, data) VALUES (?, ?, ?, ?, ?, ?)", CONNECTION_ASYNC);
     PrepareStatement(CHAR_UPD_INSTANCE_SAVE_DATA, "UPDATE instance SET data=? WHERE id=?", CONNECTION_ASYNC);
     PrepareStatement(CHAR_UPD_INSTANCE_SAVE_ENCOUNTERMASK, "UPDATE instance SET completedEncounters=? WHERE id=?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_SEL_INSTANCE_SAVES_WITH_PROGRESSION,
+        "SELECT i.id,i.map,i.resettime,i.difficulty,i.completedEncounters,i.data,"
+        "COALESCE(p.stage,0),COALESCE(p.resetTime,0),COALESCE(p.extendedResetTime,0) "
+        "FROM instance i LEFT JOIN instance_progression_reset p ON p.instanceId=i.id ORDER BY i.id", CONNECTION_SYNCH);
+    // Async workers may finish successive saves out of order. Never regress a
+    // stage or overwrite an already-consumed extension with an older checkpoint.
+    PrepareStatement(CHAR_REP_INSTANCE_PROGRESSION_RESET,
+        "INSERT INTO instance_progression_reset (instanceId,stage,resetTime,extendedResetTime) VALUES (?,?,?,?) "
+        "ON DUPLICATE KEY UPDATE "
+        "resetTime=IF(VALUES(stage)>stage OR (VALUES(stage)=stage AND VALUES(resetTime)>=resetTime),"
+        "VALUES(resetTime),resetTime),"
+        "extendedResetTime=IF(VALUES(stage)>stage OR (VALUES(stage)=stage AND VALUES(resetTime)>=resetTime),"
+        "VALUES(extendedResetTime),extendedResetTime),stage=GREATEST(stage,VALUES(stage))", CONNECTION_BOTH);
+    PrepareStatement(CHAR_DEL_INSTANCE_PROGRESSION_RESET,
+        "DELETE FROM instance_progression_reset WHERE instanceId=?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_SANITIZE_INSTANCE_PROGRESSION_RESET,
+        "DELETE FROM instance_progression_reset WHERE instanceId NOT IN (SELECT id FROM instance)", CONNECTION_ASYNC);
 
     // Game event saves
     PrepareStatement(CHAR_DEL_GAME_EVENT_SAVE, "DELETE FROM game_event_save WHERE eventEntry = ?", CONNECTION_ASYNC);

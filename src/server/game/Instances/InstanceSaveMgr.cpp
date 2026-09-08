@@ -17,6 +17,7 @@
 
 #include "InstanceSaveMgr.h"
 #include "Common.h"
+#include "Chat.h"
 #include "Config.h"
 #include "GameTime.h"
 #include "GridNotifiers.h"
@@ -33,6 +34,8 @@
 #include "Transport.h"
 #include "World.h"
 #include "WorldSessionMgr.h"
+#include "WorldSession.h"
+#include <utility>
 
 uint16 InstanceSaveMgr::ResetTimeDelay[] = {3600, 900, 300, 60, 0};
 PlayerBindStorage InstanceSaveMgr::playerBindStorage;
@@ -99,7 +102,16 @@ InstanceSave* InstanceSaveMgr::AddInstanceSave(uint32 mapId, uint32 instanceId, 
     }
     InstanceSave* save = new InstanceSave(mapId, instanceId, difficulty, resetTime, extendedResetTime);
     if (!startup)
+    {
+        if (m_progressionEnabled && ProgressionRaidReset::GetLayout(mapId))
+        {
+            save->m_progressionStage = ProgressionRaidReset::Stage::Fresh;
+            save->SetResetTime(ProgressionRaidReset::NextDailyReset(GameTime::GetGameTime().count(), m_progressionHour));
+            save->SetExtendedResetTime(ProgressionRaidReset::ExtendedDeadline(
+                {save->m_progressionStage, save->GetResetTime()}, m_progressionDays, m_progressionHour));
+        }
         save->InsertToDB();
+    }
 
     m_instanceSaveById[instanceId] = save;
     return save;
@@ -189,9 +201,48 @@ void InstanceSave::InsertToDB()
     stmt->SetData(3, uint8(GetDifficulty()));
     stmt->SetData(4, completedEncounters);
     stmt->SetData(5, data);
-    CharacterDatabase.Execute(stmt);
+    CharacterDatabaseTransaction transaction = CharacterDatabase.BeginTransaction();
+    transaction->Append(stmt);
+    UpdateProgressionReset(data, transaction);
+    PersistProgressionReset(transaction);
+    CharacterDatabase.CommitTransaction(transaction);
 
     sScriptMgr->OnInstanceSave(this);
+}
+
+void InstanceSave::UpdateProgressionReset(std::string const& data, CharacterDatabaseTransaction const& transaction)
+{
+    if (!UsesProgressionReset())
+        return;
+
+    auto mgr = sInstanceSaveMgr;
+    ProgressionRaidReset::State previous{m_progressionStage, m_resetTime};
+    auto next = ProgressionRaidReset::Advance(previous, ProgressionRaidReset::ReadProgress(m_mapid, data),
+        GameTime::GetGameTime().count(), mgr->m_progressionDays, mgr->m_progressionHour);
+    if (next == previous)
+        return;
+
+    m_progressionStage = next.stage;
+    m_resetTime = next.deadline;
+    m_extendedResetTime = ProgressionRaidReset::ExtendedDeadline(next, mgr->m_progressionDays, mgr->m_progressionHour);
+    m_progressionWarning = 0;
+    m_progressionChanged = true;
+    PersistProgressionReset(transaction);
+    LOG_INFO("instance.save", "Progression reset: map {} instance {} stage {} deadline {}",
+        m_mapid, m_instanceid, uint8(m_progressionStage.load()), GetResetTime());
+}
+
+void InstanceSave::PersistProgressionReset(CharacterDatabaseTransaction const& transaction)
+{
+    if (!UsesProgressionReset())
+        return;
+
+    auto stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_INSTANCE_PROGRESSION_RESET);
+    stmt->SetData(0, m_instanceid);
+    stmt->SetData(1, uint8(m_progressionStage.load()));
+    stmt->SetData(2, uint64(m_resetTime));
+    stmt->SetData(3, uint64(m_extendedResetTime));
+    transaction->Append(stmt);
 }
 
 time_t InstanceSave::GetResetTimeForDB()
@@ -254,12 +305,23 @@ void InstanceSaveMgr::DeleteInstanceSavedData(uint32 instanceId)
         CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DELETE_INSTANCE_SAVED_DATA);
         stmt->SetData(0, instanceId);
         CharacterDatabase.Execute(stmt);
+        stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_INSTANCE_PROGRESSION_RESET);
+        stmt->SetData(0, instanceId);
+        CharacterDatabase.Execute(stmt);
     }
 }
 
 void InstanceSaveMgr::LoadInstances()
 {
     uint32 oldMSTime = getMSTime();
+    // Startup-only policy. Already-managed saves retain their persisted deadlines
+    // even if the feature is subsequently disabled for new saves.
+    m_progressionEnabled = sConfigMgr->GetOption<bool>("Instance.ProgressionReset.Enable", false);
+    int32 days = sConfigMgr->GetOption<int32>("Instance.ProgressionReset.Days", 3);
+    m_progressionDays = days >= 1 && days <= 30 ? uint32(days) : 3;
+    m_progressionHour = sWorld->getIntConfig(CONFIG_INSTANCE_RESET_TIME_HOUR);
+    if (m_progressionHour > 23)
+        m_progressionHour = 4;
 
     // Delete character_instance for non-existent character
     CharacterDatabase.DirectExecute("DELETE ci.* FROM character_instance AS ci LEFT JOIN characters AS c ON ci.guid = c.guid WHERE c.guid IS NULL");
@@ -288,6 +350,9 @@ void InstanceSaveMgr::LoadInstances()
     // pussywizard
     LoadInstanceSaves();
     LoadCharacterBinds();
+    // Expire overdue per-save deadlines before login; never refresh on restart.
+    UpdateProgressionResets(GameTime::GetGameTime().count());
+    CharacterDatabase.Execute(CharacterDatabase.GetPreparedStatement(CHAR_SANITIZE_INSTANCE_PROGRESSION_RESET));
 
     // Sanitize pending rows on Instance_saved_data for data that wasn't deleted properly
     SanitizeInstanceSavedData();
@@ -373,7 +438,8 @@ void InstanceSaveMgr::LoadResetTimes()
 
 void InstanceSaveMgr::LoadInstanceSaves()
 {
-    QueryResult result = CharacterDatabase.Query("SELECT id, map, resettime, difficulty, completedEncounters, data FROM instance ORDER BY id ASC");
+    PreparedQueryResult result = CharacterDatabase.Query(
+        CharacterDatabase.GetPreparedStatement(CHAR_SEL_INSTANCE_SAVES_WITH_PROGRESSION));
     if (result)
     {
         do
@@ -397,6 +463,37 @@ void InstanceSaveMgr::LoadInstanceSaves()
                 save->SetInstanceData(instanceData);
                 if (resettime > 0)
                     save->SetResetTime(resettime);
+
+                uint8 stage = fields[6].Get<uint8>();
+                uint64 deadline = fields[7].Get<uint64>();
+                uint64 extendedDeadline = fields[8].Get<uint64>();
+                if (ProgressionRaidReset::GetLayout(mapId) && (m_progressionEnabled || stage != 0))
+                {
+                    if (stage >= 1 && stage <= 3 && deadline > 0 && extendedDeadline > deadline)
+                    {
+                        save->m_progressionStage = ProgressionRaidReset::Stage(stage);
+                        save->SetResetTime(deadline);
+                        save->SetExtendedResetTime(extendedDeadline);
+                    }
+                    else
+                    {
+                        // No historical first-kill timestamp exists. Give legacy
+                        // unfinished saves a full window starting at first activation.
+                        auto state = ProgressionRaidReset::Advance({},
+                            ProgressionRaidReset::ReadProgress(mapId, instanceData),
+                            GameTime::GetGameTime().count(), m_progressionDays, m_progressionHour);
+                        save->m_progressionStage = state.stage;
+                        save->SetResetTime(state.deadline);
+                        save->SetExtendedResetTime(ProgressionRaidReset::ExtendedDeadline(
+                            state, m_progressionDays, m_progressionHour));
+                        CharacterDatabaseTransaction transaction = CharacterDatabase.BeginTransaction();
+                        save->PersistProgressionReset(transaction);
+                        // Adoption must be durable before another startup.
+                        CharacterDatabase.DirectCommitTransaction(transaction);
+                        LOG_INFO("instance.save", "Adopted progression reset: map {} instance {} stage {} deadline {}",
+                            mapId, instanceId, uint8(state.stage), state.deadline);
+                    }
+                }
             }
         } while (result->NextRow());
     }
@@ -463,7 +560,7 @@ void InstanceSaveMgr::Update()
 {
     time_t now = GameTime::GetGameTime().count();
     time_t t;
-    bool resetOccurred = false;
+    bool resetOccurred = UpdateProgressionResets(now);
 
     while (!m_resetTimeQueue.empty())
     {
@@ -493,7 +590,7 @@ void InstanceSaveMgr::Update()
     // pussywizard: send updated calendar and raid info
     if (resetOccurred)
     {
-        LOG_INFO("instance.save", "Instance ID reset occurred, sending updated calendar and raid info to all players!");
+        LOG_INFO("instance.save", "Instance reset/deadline updated, sending calendar and raid info to all players!");
         WorldPacket dummy;
 
         WorldSessionMgr::SessionMap const& sessionMap = sWorldSessionMgr->GetAllSessions();
@@ -504,6 +601,77 @@ void InstanceSaveMgr::Update()
                 plr->SendRaidInfo();
             }
     }
+}
+
+bool InstanceSaveMgr::UpdateProgressionResets(time_t now)
+{
+    // World calls this after MapMgr::Update has joined its map workers. Snapshot
+    // IDs: teleporting players during Reset may add/remove other instance saves.
+    std::vector<uint32> ids;
+    for (auto const& [id, save] : m_instanceSaveById)
+        if (save->UsesProgressionReset())
+            ids.push_back(id);
+
+    bool changed = false;
+    for (uint32 id : ids)
+    {
+        while (InstanceSave* save = GetInstanceSave(id))
+        {
+            Map* map = sMapMgr->FindMap(save->GetMapId(), id);
+            if (std::exchange(save->m_progressionChanged, false))
+            {
+                changed = true;
+                if (map)
+                    for (auto const& reference : map->GetPlayers())
+                        if (Player* player = reference.GetSource(); player && player->GetSession() &&
+                            !player->GetSession()->IsBot())
+                        {
+                            ChatHandler handler(player->GetSession());
+                            if (save->m_progressionStage == ProgressionRaidReset::Stage::Cleared)
+                                handler.PSendSysMessage("Raid fully cleared: reset at the next {:02}:00 daily reset.",
+                                    m_progressionHour);
+                            else
+                                handler.PSendSysMessage("Raid progression saved: {} days from the first boss kill.",
+                                    m_progressionDays);
+                        }
+            }
+
+            time_t left = std::max<time_t>(0, save->GetResetTime() - now);
+            uint8 warning = ProgressionRaidReset::WarningStage(left);
+            if (warning > save->m_progressionWarning)
+            {
+                save->m_progressionWarning = warning;
+                if (map)
+                    map->ToInstanceMap()->SendResetWarnings(uint32(left));
+            }
+            if (left > 0)
+                break;
+
+            // Do not evict an active pull, including trash combat. The persisted
+            // deadline stays overdue; reset as soon as the instance is idle.
+            InstanceScript* script = map ? map->ToInstanceMap()->GetInstanceScript() : nullptr;
+            bool inCombat = script && script->IsEncounterInProgress();
+            if (map)
+                for (auto const& reference : map->GetPlayers())
+                    if (Player* player = reference.GetSource(); player && player->IsInCombat())
+                        inCombat = true;
+            if (inCombat)
+                break;
+
+            LOG_INFO("instance.save", "Progression reset expired: map {} instance {}", save->GetMapId(), id);
+            auto itr = m_instanceSaveById.find(id);
+            _ResetSave(itr);
+            changed = true;
+            if (map)
+            {
+                InstanceSave* retained = GetInstanceSave(id);
+                map->ToInstanceMap()->Reset(INSTANCE_RESET_GLOBAL, retained ? &retained->m_playerList : nullptr);
+            }
+            // A player can extend once. If even that deadline passed during
+            // downtime, consume the extension and then expire before logins.
+        }
+    }
+    return changed;
 }
 
 void InstanceSaveMgr::_ResetSave(InstanceSaveHashMap::iterator& itr)
@@ -548,11 +716,22 @@ void InstanceSaveMgr::_ResetSave(InstanceSaveHashMap::iterator& itr)
         stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_CHAR_INSTANCE_SET_NOT_EXTENDED);
         stmt->SetData(0, itr->second->GetInstanceId());
         trans->Append(stmt);
+        // Persist extension consumption and the new deadline in one transaction.
+        InstanceSave* save = itr->second;
+        if (save->UsesProgressionReset())
+        {
+            save->SetResetTime(save->GetExtendedResetTime());
+            save->SetExtendedResetTime(ProgressionRaidReset::ExtendedDeadline(
+                {save->m_progressionStage, save->GetResetTime()}, m_progressionDays, m_progressionHour));
+            save->m_progressionWarning = 0;
+            save->PersistProgressionReset(trans);
+        }
+        else
+        {
+            save->SetResetTime(GetResetTimeFor(save->GetMapId(), save->GetDifficulty()));
+            save->SetExtendedResetTime(GetExtendedResetTimeFor(save->GetMapId(), save->GetDifficulty()));
+        }
         CharacterDatabase.CommitTransaction(trans);
-
-        // update reset time and extended reset time for instance save
-        itr->second->SetResetTime(GetResetTimeFor(itr->second->GetMapId(), itr->second->GetDifficulty()));
-        itr->second->SetExtendedResetTime(GetExtendedResetTimeFor(itr->second->GetMapId(), itr->second->GetDifficulty()));
     }
 
     lock_instLists = false;
@@ -600,7 +779,8 @@ void InstanceSaveMgr::_ResetOrWarnAll(uint32 mapid, Difficulty difficulty, bool 
         for (InstanceSaveHashMap::iterator itr = m_instanceSaveById.begin(), itr2; itr != m_instanceSaveById.end(); )
         {
             itr2 = itr++;
-            if (itr2->second->GetMapId() == mapid && itr2->second->GetDifficulty() == difficulty)
+            if (itr2->second->GetMapId() == mapid && itr2->second->GetDifficulty() == difficulty &&
+                !itr2->second->UsesProgressionReset())
                 _ResetSave(itr2);
         }
     }
@@ -616,6 +796,8 @@ void InstanceSaveMgr::_ResetOrWarnAll(uint32 mapid, Difficulty difficulty, bool 
         Map* map2 = mitr->second;
         if (!map2->IsDungeon() || map2->GetDifficulty() != difficulty)
             continue;
+        if (InstanceSave* save = GetInstanceSave(map2->GetInstanceId()); save && save->UsesProgressionReset())
+            continue; // Global warnings/resets must not affect retained progression copies.
 
         if (warn)
         {
