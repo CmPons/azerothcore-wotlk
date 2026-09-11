@@ -71,13 +71,15 @@ enum Emotes
 
 enum HitCounter
 {
-    HITCOUNTER_SLOW             = 100,
-    HITCOUNTER_SLOW_MORE        = 150,
-    HITCOUNTER_FREEZE           = 200,
+    // Local fixed ten-player tuning: original counts * 10 / 40, rounding halves up.
+    // These counts do not follow attendance or raid-scaling overrides; keep the 15s freeze window.
+    HITCOUNTER_SLOW             = 25,
+    HITCOUNTER_SLOW_MORE        = 38,
+    HITCOUNTER_FREEZE           = 50,
 
-    HITCOUNTER_CRACK            = 50,
-    HITCOUNTER_SHATTER          = 100,
-    HITCOUNTER_EXPLODE          = 150,
+    HITCOUNTER_CRACK            = 13,
+    HITCOUNTER_SHATTER          = 25,
+    HITCOUNTER_EXPLODE          = 38,
 };
 
 enum MovePoints
