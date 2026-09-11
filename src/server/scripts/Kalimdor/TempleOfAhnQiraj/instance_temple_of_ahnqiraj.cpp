@@ -70,6 +70,7 @@ public:
         void Initialize() override
         {
             BugTrioDeathCount = 0;
+            BugTrioConsumeTarget = 0;
         }
 
         void OnCreatureCreate(Creature* creature) override
@@ -170,6 +171,8 @@ public:
             {
                 case DATA_BUG_TRIO_DEATH:
                     return BugTrioDeathCount;
+                case DATA_BUG_TRIO_CONSUME_TARGET:
+                    return BugTrioConsumeTarget;
             }
             return 0;
         }
@@ -183,6 +186,9 @@ public:
                         ++BugTrioDeathCount;
                     else
                         BugTrioDeathCount = 0;
+                    break;
+                case DATA_BUG_TRIO_CONSUME_TARGET:
+                    BugTrioConsumeTarget = data;
                     break;
                 default:
                     break;
@@ -213,6 +219,7 @@ public:
     private:
         GuidVector CThunGraspGUIDs;
         uint32 BugTrioDeathCount;
+        uint32 BugTrioConsumeTarget;
     };
 };
 

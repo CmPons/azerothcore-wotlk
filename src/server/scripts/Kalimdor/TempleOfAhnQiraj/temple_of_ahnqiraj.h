@@ -45,7 +45,8 @@ enum DataTypes
     DATA_VEKLOR             = 15,
     DATA_VEKNILASH          = 16,
     DATA_EYE_OF_CTHUN       = 18,
-    DATA_MASTERS_EYE        = 19
+    DATA_MASTERS_EYE        = 19,
+    DATA_BUG_TRIO_CONSUME_TARGET = 20
 };
 
 enum Creatures

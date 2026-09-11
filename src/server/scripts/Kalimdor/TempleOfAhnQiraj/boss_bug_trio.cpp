@@ -16,10 +16,14 @@
  */
 
 #include "CreatureScript.h"
+#include "GameTime.h"
+#include "Map.h"
+#include "ObjectMgr.h"
 #include "ScriptedCreature.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
 #include "temple_of_ahnqiraj.h"
+#include <vector>
 
 enum Spells
 {
@@ -112,8 +116,8 @@ public:
             {
                 if (vem->IsAlive() && !vem->IsInEvadeMode())
                     vem->AI()->EnterEvadeMode(why);
-                else
-                    vem->Respawn();
+                else if (!vem->IsAlive())
+                    vem->Respawn(true);
             }
         }
 
@@ -123,8 +127,8 @@ public:
             {
                 if (kri->IsAlive() && !kri->IsInEvadeMode())
                     kri->AI()->EnterEvadeMode(why);
-                else
-                    kri->Respawn();
+                else if (!kri->IsAlive())
+                    kri->Respawn(true);
             }
         }
 
@@ -134,9 +138,26 @@ public:
             {
                 if (yauj->IsAlive() && !yauj->IsInEvadeMode())
                     yauj->AI()->EnterEvadeMode(why);
-                else
-                    yauj->Respawn();
+                else if (!yauj->IsAlive())
+                    yauj->Respawn(true);
             }
+        }
+
+        // Dynamic respawning removes consumed bugs from the map. Their GUIDs
+        // no longer resolve, but the original DB spawns still have respawn timers.
+        // Snapshot IDs before changing the queue; never summon replacement bosses.
+        std::vector<ObjectGuid::LowType> respawns;
+        for (auto const& [spawnId, respawnTime] : me->GetMap()->GetCreatureRespawnTimes())
+        {
+            CreatureData const* data = sObjectMgr->GetCreatureData(spawnId);
+            if (data && (data->id == NPC_KRI || data->id == NPC_YAUJ || data->id == NPC_VEM))
+                respawns.push_back(spawnId);
+        }
+
+        for (ObjectGuid::LowType spawnId : respawns)
+        {
+            time_t now = GameTime::GetGameTime().count();
+            me->GetMap()->SaveCreatureRespawnTime(spawnId, now);
         }
     }
 
@@ -167,7 +188,7 @@ public:
         DoCastSelf(SPELL_FULL_HEAL, true);
         if (me->GetThreatMgr().GetThreatListSize())
             DoResetThreatList();
-        if (Creature* dying = instance->GetCreature(_creatureDying))
+        if (Creature* dying = instance->GetCreature(instance->GetData(DATA_BUG_TRIO_CONSUME_TARGET)))
         {
             dying->AI()->DoAction(ACTION_EXPLODE);
             me->SetTarget(dying->GetGUID());
@@ -188,6 +209,9 @@ public:
 
     void EnterEvadeMode(EvadeReason why) override
     {
+        if (!me->IsAlive() || me->IsInEvadeMode() || instance->GetBossState(DATA_BUG_TRIO) == DONE)
+            return;
+
         BossAI::EnterEvadeMode(why);
         EvadeAllBosses(why);
     }
@@ -198,7 +222,7 @@ public:
         _scheduler.CancelAll();
         _dying = false;
         _isEating = false;
-        _creatureDying = 0;
+        instance->SetData(DATA_BUG_TRIO_CONSUME_TARGET, 0);
         instance->SetData(DATA_BUG_TRIO_DEATH, 0);
         me->SetSpeed(MOVE_RUN, 15.f / 7.f); // From sniffs
 
@@ -247,7 +271,8 @@ public:
                         vem->GetMotionMaster()->MovePoint(POINT_CONSUME, x, y, z);
                     }
                 }
-                else _creatureDying = DATA_VEM;
+                else
+                    instance->SetData(DATA_BUG_TRIO_CONSUME_TARGET, DATA_VEM);
             }
             if (Creature* kri = instance->GetCreature(DATA_KRI))
             {
@@ -260,7 +285,8 @@ public:
                         kri->GetMotionMaster()->MovePoint(POINT_CONSUME, x, y, z);
                     }
                 }
-                else _creatureDying = DATA_KRI;
+                else
+                    instance->SetData(DATA_BUG_TRIO_CONSUME_TARGET, DATA_KRI);
             }
             if (Creature* yauj = instance->GetCreature(DATA_YAUJ))
             {
@@ -273,7 +299,8 @@ public:
                         yauj->GetMotionMaster()->MovePoint(POINT_CONSUME, x, y, z);
                     }
                 }
-                else _creatureDying = DATA_YAUJ;
+                else
+                    instance->SetData(DATA_BUG_TRIO_CONSUME_TARGET, DATA_YAUJ);
             }
         }
     }
@@ -320,10 +347,7 @@ public:
     TaskScheduler _scheduler;
     bool _dying;
     bool _isEating;
-    static uint32 _creatureDying;
 };
-
-uint32 boss_bug_trio::_creatureDying = 0;
 
 struct boss_kri : public boss_bug_trio
 {
