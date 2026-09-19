@@ -18,6 +18,17 @@
 #include "MovementGenerator.h"
 #include "IdleMovementGenerator.h"
 
+#include <atomic>
+#include <cstdlib>
+
+MovementGenerator::MovementGenerator()
+{
+    static std::atomic<uint64> next{1};
+    _identity = next.fetch_add(1, std::memory_order_relaxed);
+    if (!_identity)
+        std::abort(); // Never recycle a positive movement ownership identity.
+}
+
 MovementGenerator::~MovementGenerator()
 {
 }

@@ -206,10 +206,12 @@ foreach(SOURCE_MODULE ${MODULES_MODULE_LIST})
       # them to ACORE_MODULE_TEST_SOURCES for src/test/unit_tests instead.
       CollectSourceFiles(${MODULE_SOURCE_PATH} PRIVATE_SOURCES_MODULES
         ${MODULE_SOURCE_PATH}/test
-        ${MODULE_SOURCE_PATH}/tests)
+        ${MODULE_SOURCE_PATH}/tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/mod-playerbots/third_party)
       CollectIncludeDirectories(${MODULE_SOURCE_PATH} PUBLIC_INCLUDES
         ${MODULE_SOURCE_PATH}/test
-        ${MODULE_SOURCE_PATH}/tests)
+        ${MODULE_SOURCE_PATH}/tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/mod-playerbots/third_party)
 
       # Skip deprecated api loaders
       if (AC_SCRIPTS_INCLUDES MATCHES "${SOURCE_MODULE}")
@@ -228,10 +230,12 @@ foreach(SOURCE_MODULE ${MODULES_MODULE_LIST})
     unset(MODULE_SOURCE_PRIVATE_SOURCES)
     CollectSourceFiles(${MODULE_SOURCE_PATH} MODULE_SOURCE_PRIVATE_SOURCES
       ${MODULE_SOURCE_PATH}/test
-      ${MODULE_SOURCE_PATH}/tests)
+      ${MODULE_SOURCE_PATH}/tests
+      ${CMAKE_CURRENT_SOURCE_DIR}/mod-playerbots/third_party)
     CollectIncludeDirectories(${MODULE_SOURCE_PATH} PUBLIC_INCLUDES
       ${MODULE_SOURCE_PATH}/test
-      ${MODULE_SOURCE_PATH}/tests)
+      ${MODULE_SOURCE_PATH}/tests
+      ${CMAKE_CURRENT_SOURCE_DIR}/mod-playerbots/third_party)
 
     # Configure the scriptloader
     ConfigureScriptLoader(${SOURCE_MODULE} SCRIPT_MODULE_PRIVATE_SCRIPTLOADER ON ${SOURCE_MODULE})

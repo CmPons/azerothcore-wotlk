@@ -718,7 +718,13 @@ public:
     [[nodiscard]] ObjectGuid GetMinionGUID() const { return GetGuidValue(UNIT_FIELD_SUMMON); }
     void SetMinionGUID(ObjectGuid guid) { SetGuidValue(UNIT_FIELD_SUMMON, guid); }
     [[nodiscard]] ObjectGuid GetCharmerGUID() const { return GetGuidValue(UNIT_FIELD_CHARMEDBY); }
-    void SetCharmerGUID(ObjectGuid owner) { SetGuidValue(UNIT_FIELD_CHARMEDBY, owner); }
+    void SetCharmerGUID(ObjectGuid owner)
+    {
+        if (owner != GetCharmerGUID())
+            _controlIdentity = NextControlIdentity();
+        SetGuidValue(UNIT_FIELD_CHARMEDBY, owner);
+    }
+    uint64 GetControlIdentity() const { return _controlIdentity; }
     [[nodiscard]] ObjectGuid GetCharmGUID() const { return  GetGuidValue(UNIT_FIELD_CHARM); }
     void SetPetGUID(ObjectGuid guid) { m_SummonSlot[SUMMON_SLOT_PET] = guid; }
     [[nodiscard]] ObjectGuid GetPetGUID() const { return m_SummonSlot[SUMMON_SLOT_PET]; }
@@ -1760,6 +1766,8 @@ public:
 
     [[nodiscard]] bool IsStopped() const { return !(HasUnitState(UNIT_STATE_MOVING)); }
     void StopMoving();
+    // Stops only this still-live spline; does not clear movement states owned by a replacement controller.
+    bool StopOwnedSpline(uint32 identity);
     void StopMovingOnCurrentPos();   /// @brief Disable the unit movement by clearing UNIT_STATE_MOVING and stopping the spline.
     virtual void PauseMovement(uint32 timer = 0, uint8 slot = 0); // timer in ms
     void ResumeMovement(uint32 timer = 0, uint8 slot = 0);
@@ -2148,6 +2156,8 @@ protected:
 
     float m_createStats[MAX_STATS];
 
+    static uint64 NextControlIdentity();
+    uint64 _controlIdentity = NextControlIdentity();
     AttackerSet m_attackers;
     Unit* m_attacking;
 

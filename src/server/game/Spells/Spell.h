@@ -588,6 +588,14 @@ public:
     CurrentSpellTypes GetCurrentContainer() const;
 
     Unit* GetCaster() const { return m_caster; }
+    uint64 GetCastIdentity() const { return _castIdentity; }
+    void SetCombatAdmissionCheck(bool (*check)(Spell const&)) { _combatAdmissionCheck = check; }
+    std::list<TargetInfo> const& GetCollectedCombatTargets() const { return m_UniqueTargetInfo; }
+
+private:
+    uint64 _castIdentity = 0;
+    bool (*_combatAdmissionCheck)(Spell const&) = nullptr;
+public:
     Unit* GetOriginalCaster() const { return m_originalCaster; }
     Unit* GetOriginalTarget() const;
     SpellInfo const* GetSpellInfo() const { return m_spellInfo; }

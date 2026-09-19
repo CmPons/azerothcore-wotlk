@@ -4,6 +4,12 @@ AzerothCore is a C++ MMORPG server emulator for World of Warcraft 3.3.5a (WotLK)
 
 ## Agent rules
 
+- **Commit and push ALL completed changes to `CmPons/azerothcore-wotlk`, branch `local-playerbot`, remote `fork`.** This checkout is a maintained fork, not a disposable generated tree. Never leave source changes only in a parent-repo patch or backup.
+- Inspect untracked files too. After publishing, update `repo-pins.txt` in the parent deployment repo and commit/push that repo. Verify the remote tip; report a failed push explicitly.
+- Nested module repositories require their OWN commits and pushes. `mod-playerbots` and `mod-player-bot-level-brackets` each use their corresponding `CmPons` fork / `local-playerbot` branch. Root-authored modules are tracked in the parent deployment repository.
+- Do not reset/clean away changes, force-push, or commit credentials/live configs/build output. Follow the parent `AGENTS.md` and `Documents/source-workflow.md` when working in the full workspace.
+- **Never restart, recreate, stop, or otherwise interrupt the server or Pi bridge without explicit user authorization.** Git work does not authorize deployment.
+
 - **Do not configure or build unless explicitly asked.** Builds are slow and rarely needed for code changes.
 - **Never edit SQL files outside `data/sql/updates/pending_db_*/` unless explicitly requested. ** `data/sql/base/`, `data/sql/archive/`, and `data/sql/updates/db_*/` are immutable.
 

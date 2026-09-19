@@ -568,11 +568,18 @@ SpellValue::SpellValue(SpellInfo const* proto)
     ForcedCritResult = false;
 }
 
+#include <atomic>
+#include <cstdlib>
+
 Spell::Spell(Unit* caster, SpellInfo const* info, TriggerCastFlags triggerFlags, ObjectGuid originalCasterGUID, bool skipCheck) :
     m_spellInfo(sSpellMgr->GetSpellForDifficultyFromSpell(info, caster)),
     m_caster((info->HasAttribute(SPELL_ATTR6_ORIGINATE_FROM_CONTROLLER) && caster->GetCharmerOrOwner()) ? caster->GetCharmerOrOwner() : caster)
     , m_spellValue(new SpellValue(m_spellInfo)), _spellEvent(nullptr)
 {
+    static std::atomic<uint64> nextCast{1};
+    _castIdentity = nextCast.fetch_add(1, std::memory_order_relaxed);
+    if (!_castIdentity)
+        std::abort();
     m_customError = SPELL_CUSTOM_ERROR_NONE;
     m_skipCheck = skipCheck;
     m_selfContainer = nullptr;
@@ -3915,6 +3922,16 @@ void Spell::_cast(bool skipCheck)
         }
 
         m_caster->ToPlayer()->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_CAST_SPELL, m_spellInfo->Id, 0, (m_targets.GetUnitTarget() ? m_targets.GetUnitTarget() : m_caster));
+    }
+
+    // Opt-in policy requests only. Check the complete collected effect set after script callbacks,
+    // before remaining costs and launch. Earlier native prepare/GCD/script work is not rolled back.
+    if (_combatAdmissionCheck && !_combatAdmissionCheck(*this))
+    {
+        SendInterrupted(0);
+        finish(false);
+        SetExecutedCurrently(false);
+        return;
     }
 
     if (!HasTriggeredCastFlag(TRIGGERED_IGNORE_POWER_AND_REAGENT_COST))

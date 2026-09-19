@@ -897,6 +897,44 @@ void MotionMaster::MoveDistract(uint32 timer)
     Mutate(mgen, MOTION_SLOT_CONTROLLED);
 }
 
+bool MotionMaster::InstallCheckedMovement(uint64 expected, MovementGenerator* next)
+{
+    if (!next || (_cleanFlag & (MMCF_UPDATE | MMCF_INUSE)) || Impl[MOTION_SLOT_CONTROLLED])
+        return false;
+    MovementGenerator* current = Impl[MOTION_SLOT_ACTIVE];
+    if (expected ? (!current || current->GetIdentity() != expected) :
+        (current || GetCurrentMovementGeneratorType() != IDLE_MOTION_TYPE || !_owner->movespline->Finalized()))
+        return false;
+    if (current)
+    {
+        uint32 const yieldedSpline = _owner->movespline->GetId();
+        Impl[MOTION_SLOT_ACTIVE] = nullptr;
+        while (!empty() && !top())
+            --_top;
+        DirectDelete(current);
+        _owner->StopOwnedSpline(yieldedSpline);
+        // Finalize may install replacement/manual/control movement. Unlike ordinary Mutate's
+        // replacement loop, a checked handoff must not delete that new work to make room.
+        if (Impl[MOTION_SLOT_ACTIVE] || Impl[MOTION_SLOT_CONTROLLED] ||
+            (_cleanFlag & (MMCF_UPDATE | MMCF_INUSE)) ||
+            GetCurrentMovementGeneratorType() != IDLE_MOTION_TYPE)
+            return false;
+    }
+    Mutate(next, MOTION_SLOT_ACTIVE);
+    return true;
+}
+
+bool MotionMaster::ExpireOwnedMovement(uint64 identity)
+{
+    if (!identity || (_cleanFlag & (MMCF_UPDATE | MMCF_INUSE)))
+        return false;
+    MovementGenerator* current = Impl[MOTION_SLOT_ACTIVE];
+    if (!current || current->GetIdentity() != identity)
+        return false;
+    DirectExpireSlot(MOTION_SLOT_ACTIVE, false);
+    return true;
+}
+
 void MotionMaster::Mutate(MovementGenerator* m, MovementSlot slot)
 {
     bool const delayed = (_cleanFlag & MMCF_UPDATE);

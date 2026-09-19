@@ -32,19 +32,29 @@ protected:
         // called from link()
         this->getTarget()->insertFirst(this);
         this->getTarget()->incSize();
+        this->getTarget()->BoundedLinkAdded();
     }
     void targetObjectDestroyLink() override
     {
         // called from unlink()
-        if (this->isValid()) this->getTarget()->decSize();
+        if (this->isValid())
+        {
+            this->getTarget()->BoundedBeforeUnlink(this);
+            this->getTarget()->decSize();
+        }
     }
     void sourceObjectDestroyLink() override
     {
-        // called from invalidate()
+        // called from invalidate(), before Reference::invalidate detaches this node.
+        this->getTarget()->BoundedBeforeUnlink(this);
         this->getTarget()->decSize();
     }
 public:
     GridReference() : Reference<GridRefMgr<OBJECT>, OBJECT>() {}
+    GridReference(GridReference const&) = delete;
+    GridReference& operator=(GridReference const&) = delete;
+    GridReference(GridReference&&) = delete;
+    GridReference& operator=(GridReference&&) = delete;
     ~GridReference() override { this->unlink(); }
     GridReference* next() { return (GridReference*)Reference<GridRefMgr<OBJECT>, OBJECT>::next(); }
 };

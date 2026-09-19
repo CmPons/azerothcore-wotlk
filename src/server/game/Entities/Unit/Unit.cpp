@@ -7714,8 +7714,22 @@ bool Unit::HasAuraState(AuraStateType flag, SpellInfo const* spellProto, Unit co
     return HasFlag(UNIT_FIELD_AURASTATE, 1 << (flag - 1));
 }
 
+#include <atomic>
+#include <cstdlib>
+
+uint64 Unit::NextControlIdentity()
+{
+    static std::atomic<uint64> next{1};
+    uint64 const identity = next.fetch_add(1, std::memory_order_relaxed);
+    if (!identity)
+        std::abort();
+    return identity;
+}
+
 void Unit::SetOwnerGUID(ObjectGuid owner)
 {
+    if (owner != GetOwnerGUID())
+        _controlIdentity = NextControlIdentity();
     if (GetOwnerGUID() == owner)
         return;
 
@@ -13032,6 +13046,19 @@ void Unit::SendPetAIReaction(ObjectGuid guid) const
 MovementGeneratorType Unit::GetDefaultMovementType() const
 {
     return IDLE_MOTION_TYPE;
+}
+
+bool Unit::StopOwnedSpline(uint32 identity)
+{
+    if (!IsInWorld() || movespline->GetId() != identity || movespline->Finalized())
+        return false;
+    if (movespline->HasStarted())
+        UpdateSplinePosition();
+    if (movespline->GetId() != identity || movespline->Finalized())
+        return false;
+    Movement::MoveSplineInit init(this);
+    init.Stop();
+    return true;
 }
 
 void Unit::StopMoving()

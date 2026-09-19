@@ -224,6 +224,11 @@ public:
             DirectExpireSlot(slot, reset);
     }
 
+    // Serialized checked handoff. Zero expects finalized idle; nonzero identifies the exact active generator.
+    // Caller retains next on failure. No controlled generator can be displaced.
+    bool InstallCheckedMovement(uint64 expected, MovementGenerator* next);
+    bool ExpireOwnedMovement(uint64 identity);
+
     void MoveIdle();
     void MoveTargetedHome(bool walk = false);
     void MoveRandom(float wanderDistance = 0.0f);
