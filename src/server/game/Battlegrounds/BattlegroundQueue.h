@@ -33,6 +33,9 @@ constexpr int32 BG_QUEUE_ANNOUNCER_IMMEDIATE_DEBOUNCE = 1;
 
 struct GroupQueueInfo                                       // stores information about the group in queue (also used when joined as solo!)
 {
+    // Queue provenance survives members accepting an invite and leaving Players.
+    ObjectGuid QueuedGroupGuid;                             // empty for a solo queue
+    ObjectGuid QueuedLeaderGuid;                            // original queue initiator
     GuidSet Players;                                        // player guid set
     TeamId  teamId;                                         // Player team (TEAM_ALLIANCE/TEAM_HORDE)
     TeamId  RealTeamID;                                     // Realm player team (TEAM_ALLIANCE/TEAM_HORDE)

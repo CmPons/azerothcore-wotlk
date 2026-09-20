@@ -138,6 +138,8 @@ GroupQueueInfo* BattlegroundQueue::AddGroup(Player* leader, Group* group, Battle
 
     // create new ginfo
     auto* ginfo                         = new GroupQueueInfo;
+    ginfo->QueuedGroupGuid              = group ? group->GetGUID() : ObjectGuid::Empty;
+    ginfo->QueuedLeaderGuid             = leader->GetGUID();
     ginfo->BgTypeId                     = bgTypeId;
     ginfo->ArenaType                    = arenaType;
     ginfo->ArenaTeamId                  = arenaTeamId;
