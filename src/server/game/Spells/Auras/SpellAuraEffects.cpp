@@ -578,6 +578,7 @@ int32 AuraEffect::CalculateAmount(Unit* caster)
     GetBase()->CallScriptEffectCalcAmountHandlers(this, amount, m_canBeRecalculated);
 
     amount *= GetBase()->GetStackAmount();
+    sScriptMgr->OnAuraEffectCalculateAmount(this, caster, amount);
     return amount;
 }
 

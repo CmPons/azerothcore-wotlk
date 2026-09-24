@@ -44,6 +44,7 @@ enum UnitHook
     UNITHOOK_ON_UNIT_EXIT_COMBAT,
     UNITHOOK_ON_UNIT_DEATH,
     UNITHOOK_ON_UNIT_SET_SHAPESHIFT_FORM,
+    UNITHOOK_ON_AURA_EFFECT_CALCULATE_AMOUNT,
     UNITHOOK_END
 };
 
@@ -73,8 +74,11 @@ public:
     // Called when Spell Damage is being Dealt
     virtual void ModifySpellDamageTaken(Unit* /*target*/, Unit* /*attacker*/, int32& /*damage*/, SpellInfo const* /*spellInfo*/) { }
 
-    // Called when Heal is Recieved
+    // Called before heal absorption/application. Target comes first for direct heals and periodic ticks.
     virtual void ModifyHealReceived(Unit* /*target*/, Unit* /*healer*/, uint32& /*heal*/, SpellInfo const* /*spellInfo*/) { }
+
+    // Fresh amount calculation, after aura scripts and stacking; not called when consuming an absorb.
+    virtual void OnAuraEffectCalculateAmount(AuraEffect const* /*effect*/, Unit* /*caster*/, int32& /*amount*/) { }
 
     //Called when Damage is Dealt
     virtual uint32 DealDamage(Unit* /*AttackerUnit*/, Unit* /*pVictim*/, uint32 damage, DamageEffectType /*damagetype*/) { return damage; }
