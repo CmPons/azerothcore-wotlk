@@ -2542,8 +2542,9 @@ void Group::SetBattlefieldGroup(Battlefield* bg)
 
 void Group::SetGroupMemberFlag(ObjectGuid guid, bool apply, GroupMemberFlags flag)
 {
-    // Assistants, main assistants and main tanks are only available in raid groups
-    if (!isRaidGroup())
+    // Tank assignment also supports explicitly coordinated five-player groups.
+    // Assistant permissions remain raid-only.
+    if (!isRaidGroup() && flag != MEMBER_FLAG_MAINTANK)
         return;
 
     // Check if player is really in the raid
@@ -2551,31 +2552,34 @@ void Group::SetGroupMemberFlag(ObjectGuid guid, bool apply, GroupMemberFlags fla
     if (slot == m_memberSlots.end())
         return;
 
-    // Do flag specific actions, e.g ensure uniqueness
-    switch (flag)
+    if (flag != MEMBER_FLAG_MAINASSIST && flag != MEMBER_FLAG_MAINTANK && flag != MEMBER_FLAG_ASSISTANT)
+        return;
+
+    CharacterDatabaseTransaction transaction = CharacterDatabase.BeginTransaction();
+    auto persist = [&transaction](MemberSlot const& member)
     {
-        case MEMBER_FLAG_MAINASSIST:
-            RemoveUniqueGroupMemberFlag(MEMBER_FLAG_MAINASSIST);         // Remove main assist flag from current if any.
-            break;
-        case MEMBER_FLAG_MAINTANK:
-            RemoveUniqueGroupMemberFlag(MEMBER_FLAG_MAINTANK);           // Remove main tank flag from current if any.
-            break;
-        case MEMBER_FLAG_ASSISTANT:
-            break;
-        default:
-            return;                                                      // This should never happen
+        CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_GROUP_MEMBER_FLAG);
+        stmt->SetData(0, member.flags);
+        stmt->SetData(1, member.guid.GetCounter());
+        transaction->Append(stmt);
+    };
+
+    // Clearing one member must not clear someone else's role. Assigning a unique
+    // role clears AND persists its former owners atomically with the new owner.
+    if (apply && flag != MEMBER_FLAG_ASSISTANT)
+    {
+        for (MemberSlot& member : m_memberSlots)
+        {
+            if (member.guid != guid && (member.flags & flag))
+            {
+                member.flags &= ~flag;
+                persist(member);
+            }
+        }
     }
-
-    // Switch the actual flag
     ToggleGroupMemberFlag(slot, flag, apply);
-
-    // Preserve the new setting in the db
-    CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_GROUP_MEMBER_FLAG);
-
-    stmt->SetData(0, slot->flags);
-    stmt->SetData(1, guid.GetCounter());
-
-    CharacterDatabase.Execute(stmt);
+    persist(*slot);
+    CharacterDatabase.CommitTransaction(transaction);
 
     // Broadcast the changes to the group
     SendUpdate();
