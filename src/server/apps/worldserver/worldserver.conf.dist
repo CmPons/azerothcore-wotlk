@@ -3346,10 +3346,12 @@ Instance.IgnoreRaid = 0
 
 Instance.ResetTimeHour = 4
 
-# Conditional resets for Onyxia, ZG, MC, BWL, AQ20 and AQ40 (other maps unchanged).
-# First successful boss completion starts Days * 24 hours; a full clear replaces
+# Conditional resets for all supported Classic, Burning Crusade and Wrath raids.
+# First successful encounter completion starts Days * 24 hours; a full clear replaces
 # that deadline with the next Instance.ResetTimeHour. Empty copies reset daily.
-# ZG requires its eight regular bosses, not the two summon events or boss adds.
+# All regular encounters are required, not just the final boss. Optional ZG summons,
+# Karazhan animal boss/Nightbane, Ulduar Algalon and Sartharion's drakes are not required.
+# Internal door/intro/trash slots do not count. Normal dungeons/heroics are unchanged.
 # Requires the instance_progression_reset characters migration. Startup-only;
 # disabling stops adopting saves but honors already-managed save deadlines.
 Instance.ProgressionReset.Enable = 0

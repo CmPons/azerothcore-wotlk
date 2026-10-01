@@ -18,17 +18,21 @@ namespace ProgressionRaidReset
     constexpr int64_t Day = 86400;
     enum class Stage : uint8_t { Unmanaged = 0, Fresh = 1, Progression = 2, Cleared = 3 };
 
+    enum class SaveFormat : uint8_t { EncounterStates, TrialCheckpoint };
+
     struct Layout
     {
         std::string_view header;
         uint32_t slots;
         uint32_t encounterMask;
         uint32_t requiredMask;
+        SaveFormat format = SaveFormat::EncounterStates;
     };
 
     inline std::optional<Layout> GetLayout(uint32_t mapId)
     {
-        // These are InstanceScript boss indexes, NOT DungeonEncounter.dbc indexes.
+        // These are persisted encounter slots, NOT DungeonEncounter.dbc kill-credit indexes.
+        // VoA writes four legacy encounter states in WriteSaveDataMore; ToC uses a checkpoint.
         switch (mapId)
         {
             case 249: return Layout{"OL", 1, 0x1, 0x1};
@@ -40,6 +44,32 @@ namespace ProgressionRaidReset
             case 509: return Layout{"RA", 6, 0x3f, 0x3f};
             // AQ40 index zero is unused. Include Trio, Viscidus and Ouro.
             case 531: return Layout{"AQT", 10, 0x3fe, 0x3fe};
+            // BC: Kara's animal boss and summoned Nightbane may start progression,
+            // but neither is required for a clear. Chess is a required encounter.
+            case 532: return Layout{"KZ", 12, 0xfff, 0x7f7};
+            case 534: return Layout{"HY", 5, 0x1f, 0x1f};
+            case 544: return Layout{"ML", 1, 0x1, 0x1};
+            case 548: return Layout{"SS", 6, 0x3f, 0x3f};
+            case 550: return Layout{"TE", 4, 0xf, 0xf};
+            // Black Temple slot 8 is Akama's door event, not another boss.
+            case 564: return Layout{"BT", 10, 0x2ff, 0x2ff};
+            case 565: return Layout{"GL", 2, 0x3, 0x3};
+            case 568: return Layout{"ZA", 6, 0x3f, 0x3f};
+            // Sunwell slot 3 is Felmyst's door event.
+            case 580: return Layout{"SWP", 7, 0x77, 0x77};
+            // Wrath (Onyxia above is shared). Algalon is an optional bonus boss;
+            // all thirteen regular Ulduar encounters, including the keepers, are required.
+            case 533: return Layout{"NAX", 15, 0x7fff, 0x7fff};
+            case 603: return Layout{"UU", 14, 0x3fff, 0x1fff};
+            // Sartharion completes OS with any number of drakes left alive.
+            case 615: return Layout{"OS", 4, 0xf, 0x1};
+            case 616: return Layout{"EOE", 1, 0x1, 0x1};
+            case 624: return Layout{"VA", 4, 0xf, 0xf};
+            // ICC excludes Svalna (9) and the gauntlet/trash flags (13, 14).
+            case 631: return Layout{"IC", 15, 0x1dff, 0x1dff};
+            case 649: return Layout{"TCR", 1, 0, 0, SaveFormat::TrialCheckpoint};
+            // Ruby Sanctum excludes Halion's three introduction flags (3..5).
+            case 724: return Layout{"RS", 7, 0x47, 0x47};
             default: return std::nullopt;
         }
     }
@@ -62,6 +92,32 @@ namespace ProgressionRaidReset
             char actual;
             if (!(input >> actual) || actual != expected)
                 return std::nullopt;
+        }
+
+        if (layout->format == SaveFormat::TrialCheckpoint)
+        {
+            uint32_t checkpoint;
+            if (!(input >> checkpoint))
+                return std::nullopt;
+            // instance_trial_of_the_crusader::InstanceProgress, not EncounterState.
+            // Intro/Gormok/worm kills are not completion of Northrend Beasts.
+            switch (checkpoint)
+            {
+                case 0: // INITIAL
+                case 1: // INTRO_DONE
+                    return Progress{false, false};
+                case 2: // BEASTS_DEAD
+                case 3: // JARAXXUS_INTRO_DONE
+                case 4: // JARAXXUS_DEAD
+                case 6: // FACTION_CHAMPIONS_DEAD
+                case 8: // VALKYR_DEAD
+                case 9: // ANUB_ARAK available, not defeated
+                    return Progress{true, false};
+                case 10: // DONE: Anub'arak defeated
+                    return Progress{true, true};
+                default:
+                    return std::nullopt;
+            }
         }
 
         uint32_t done = 0;

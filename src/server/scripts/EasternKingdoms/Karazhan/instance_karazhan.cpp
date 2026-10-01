@@ -225,6 +225,7 @@ public:
                 }
                 case DATA_CHESS_EVENT:
                 {
+                    bool const completedChess = data == DONE && _chessEvent == IN_PROGRESS;
                     _chessEvent = data;
 
                     switch (data)
@@ -259,6 +260,11 @@ public:
                             }
                             break;
                         case DONE:
+                            // Persist the first PvE victory for per-instance reset accounting.
+                            // Friendly replays and failures must not erase that completion.
+                            if (completedChess && GetBossState(DATA_CHESS_EVENT) != DONE)
+                                if (!SetBossState(DATA_CHESS_EVENT, DONE))
+                                    SaveToDB(); // The previously unused slot can still be TO_BE_DECIDED.
                             HandleGameObject(m_uiGamesmansExitDoor, true);
                             instance->ToInstanceMap()->PermBindAllPlayers();
                             break;
@@ -302,6 +308,12 @@ public:
                 default:
                     break;
             }
+        }
+
+        bool IsEncounterInProgress() const override
+        {
+            // Chess uses a separate live state, not an IN_PROGRESS boss-state slot.
+            return _chessEvent == IN_PROGRESS || _chessEvent == SPECIAL || InstanceScript::IsEncounterInProgress();
         }
 
         bool SetBossState(uint32 type, EncounterState state) override
