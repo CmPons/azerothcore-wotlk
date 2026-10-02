@@ -240,6 +240,7 @@ public: /* CreatureScript */
     CreatureAI* GetCreatureAI(Creature* creature);
     void OnCreatureUpdate(Creature* creature, uint32 diff);
     void OnCreatureAddWorld(Creature* creature);
+    void OnCreatureRespawn(Creature* creature);
     void OnCreatureRemoveWorld(Creature* creature);
     void OnFfaPvpStateUpdate(Creature* creature, bool InPvp);
 

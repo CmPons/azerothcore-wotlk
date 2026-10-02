@@ -2119,6 +2119,9 @@ void Creature::Respawn(bool force)
                 //Re-initialize reactstate that could be altered by movementgenerators
                 InitializeReactState();
 
+                // In-place respawns do not run AddToWorld; native stats have just been rebuilt.
+                sScriptMgr->OnCreatureRespawn(this);
+
             }
             m_respawnedTime = GameTime::GetGameTime().count();
             // xinef: relocate notifier, fixes npc appearing in corpse position after forced respawn (instead of spawn)

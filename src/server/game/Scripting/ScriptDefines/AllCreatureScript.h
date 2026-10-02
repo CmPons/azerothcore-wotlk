@@ -42,6 +42,10 @@ public:
      */
     virtual void OnCreatureAddWorld(Creature* /*creature*/) { }
 
+    // Called after a successful in-place (compatibility-mode) respawn rebuilds stats and resets AI.
+    // Dynamic respawns recreate the object and use OnCreatureAddWorld instead.
+    virtual void OnCreatureRespawn(Creature* /*creature*/) { }
+
     /**
      * @brief This hook runs after remove creature in world
      *
