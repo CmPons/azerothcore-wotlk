@@ -79,10 +79,27 @@ struct boss_leotheras_the_blind : public BossAI
 
     void Reset() override
     {
+        if (!me->IsAlive() || me->IsEngaged())
+            return;
+
         BossAI::Reset();
+        _combatStarted = false;
         DoCastSelf(SPELL_CLEAR_CONSUMING_MADNESS, true);
         DoCastSelf(SPELL_DUAL_WIELD, true);
+        me->RemoveAurasDueToSpell(SPELL_WHIRLWIND);
+        me->RemoveAurasDueToSpell(SPELL_METAMORPHOSIS);
+        me->RemoveUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
+        me->LoadEquipment();
         me->SetReactState(REACT_PASSIVE);
+
+        // Dead spellbinders do not necessarily respawn with the boss. A released
+        // boss must be pullable again, without starting combat or timers at home.
+        if (SpellbindersDefeated())
+        {
+            me->RemoveAurasDueToSpell(SPELL_BANISH);
+            me->SetReactState(REACT_AGGRESSIVE);
+            me->SetStandState(UNIT_STAND_STATE_STAND);
+        }
 
         ScheduleHealthCheckEvent(15, [&]{
             me->RemoveAurasDueToSpell(SPELL_WHIRLWIND);
@@ -135,30 +152,46 @@ struct boss_leotheras_the_blind : public BossAI
             ScriptedAI::AttackStart(who);
     }
 
+    void JustEngagedWith(Unit* who) override
+    {
+        BossAI::JustEngagedWith(who);
+        if (me->IsInEvadeMode())
+            return;
+
+        if (SpellbindersDefeated())
+            StartEncounter();
+    }
+
     void DoAction(int32 actionId) override
     {
-        if (actionId == ACTION_CHECK_SPELLBINDERS)
+        if (actionId != ACTION_CHECK_SPELLBINDERS || _combatStarted || !me->IsAlive() || me->IsInEvadeMode())
+            return;
+
+        if (CreatureGroup* formation = me->GetFormation(); formation && !formation->IsAnyMemberAlive(true))
         {
-            if (CreatureGroup* formation = me->GetFormation())
-            {
-                if (!formation->IsAnyMemberAlive(true))
-                {
-                    me->RemoveAllAuras();
-                    me->LoadEquipment();
-                    me->SetReactState(REACT_AGGRESSIVE);
-                    me->SetStandState(UNIT_STAND_STATE_STAND);
-                    me->SetInCombatWithZone();
-                    Talk(SAY_AGGRO);
-
-                    scheduler.Schedule(10min, [this](TaskContext)
-                    {
-                        DoCastSelf(SPELL_BERSERK);
-                    });
-
-                    ElfTime();
-                }
-            }
+            // Set the latch before zone combat can synchronously call JustEngagedWith.
+            StartEncounter();
+            me->SetInCombatWithZone();
         }
+    }
+
+    void StartEncounter()
+    {
+        if (_combatStarted)
+            return;
+
+        _combatStarted = true;
+        _released = true;
+        me->RemoveAllAuras();
+        me->LoadEquipment();
+        me->SetReactState(REACT_AGGRESSIVE);
+        me->SetStandState(UNIT_STAND_STATE_STAND);
+        Talk(SAY_AGGRO);
+        scheduler.Schedule(10min, [this](TaskContext)
+        {
+            DoCastSelf(SPELL_BERSERK);
+        });
+        ElfTime();
     }
 
     void ElfTime()
@@ -179,6 +212,9 @@ struct boss_leotheras_the_blind : public BossAI
 
     void MoveToTargetIfOutOfRange(Unit* target)
     {
+        if (!target)
+            return;
+
         if (!me->IsWithinDistInMap(target, 40.0f))
         {
             me->GetMotionMaster()->MoveChase(target, 40.0f, 0);
@@ -241,6 +277,29 @@ struct boss_leotheras_the_blind : public BossAI
                 me->setAttackTimer(BASE_ATTACK, 2000);
         }
     }
+
+private:
+    bool SpellbindersDefeated() const
+    {
+        CreatureGroup* formation = me->GetFormation();
+        if (!formation || formation->IsAnyMemberAlive(true))
+            return false;
+
+        // Remember an actual release across wipes, even after guard corpses unload.
+        // On fresh AI creation an incompletely loaded formation is not a release.
+        if (_released)
+            return true;
+
+        uint32 spellbinders = 0;
+        for (auto const& member : formation->GetMembers())
+            if (member.first && member.first->GetEntry() == NPC_GREYHEART_SPELLBINDER)
+                ++spellbinders;
+
+        return spellbinders == 3;
+    }
+
+    bool _combatStarted = false;
+    bool _released = false;
 };
 
 struct npc_inner_demon : public ScriptedAI
