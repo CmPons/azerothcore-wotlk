@@ -477,7 +477,9 @@ struct npc_ashtongue_channeler : public NullCreatureAI
     {
         scheduler.Schedule(3600ms, [this](TaskContext context)
         {
-            if (!me->HasUnitState(UNIT_STATE_CASTING))
+            // Action-allowed channels do not set UNIT_STATE_CASTING. Recasting an active
+            // channel refreshes its aura but adds another slow stack that outlives it.
+            if (!me->IsNonMeleeSpellCast(false))
                 me->CastSpell(me, SPELL_SHADE_SOUL_CHANNEL, true);
 
             context.Repeat();
